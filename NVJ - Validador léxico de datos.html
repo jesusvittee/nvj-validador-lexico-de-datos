@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NVJ - Validador léxico de datos</title>
+<style>
+:root{
+  --bg:#000; --text:#fff; --muted:rgba(255,255,255,.62);
+  --glass:rgba(255,255,255,.07); --glass-b:rgba(255,255,255,.22);
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:"Poppins","Segoe UI",system-ui,sans-serif;overflow-x:hidden;position:relative}
+.bubble{position:fixed;border-radius:50%;pointer-events:none;z-index:0;
+  background:radial-gradient(circle at 30% 28%,rgba(255,255,255,.55),rgba(160,175,200,.18) 35%,rgba(20,24,32,.1) 70%);
+  box-shadow:inset 0 0 30px rgba(255,255,255,.18);filter:blur(1px)}
+.b1{width:120px;height:120px;top:6%;left:3%}
+.b2{width:260px;height:260px;top:55%;right:-60px;filter:blur(6px)}
+.b3{width:70px;height:70px;top:30%;left:46%}
+.b4{width:180px;height:180px;bottom:-50px;left:20%;filter:blur(4px)}
+main{position:relative;z-index:1;max-width:1280px;margin:0 auto;padding:28px 20px 40px}
+.glass{background:var(--glass);border:1px solid var(--glass-b);border-radius:22px;
+  -webkit-backdrop-filter:blur(22px) saturate(140%);backdrop-filter:blur(22px) saturate(140%);
+  box-shadow:0 8px 40px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.18)}
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:20px 26px;margin-bottom:20px}
+h1{margin:0;font-size:clamp(1.3rem,3vw,2rem);font-weight:600;letter-spacing:-.01em}
+.sub{margin:4px 0 0;color:var(--muted);font-size:.85rem}
+.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+button,.btn{font:inherit;font-size:.9rem;color:#fff;cursor:pointer;padding:10px 20px;border-radius:999px;
+  background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.35);transition:background .2s}
+button:hover,.btn:hover{background:rgba(255,255,255,.24)}
+button:focus-visible,.btn:focus-within{outline:2px solid #fff;outline-offset:3px}
+button:disabled{opacity:.4;cursor:default}
+#file{position:absolute;width:1px;height:1px;opacity:0}
+.grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:20px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+section{padding:24px}
+h2{margin:0 0 4px;font-size:1.1rem;font-weight:600}
+.fname{color:var(--muted);font-size:.82rem;margin:0 0 16px;word-break:break-all}
+.pie-wrap{display:flex;flex-direction:column;align-items:center;gap:18px}
+svg.pie{width:min(100%,300px);height:auto}
+.legend{list-style:none;margin:0;padding:0;width:100%;display:grid;gap:8px}
+.legend li{display:flex;align-items:center;gap:10px;font-size:.88rem}
+.dot{width:12px;height:12px;border-radius:50%;flex:none}
+.legend .n{margin-left:auto;font-variant-numeric:tabular-nums}
+.empty{color:var(--muted);text-align:center;padding:40px 10px;font-size:.92rem}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:18px}
+.stat{padding:12px 14px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15)}
+.stat b{display:block;font-size:1.4rem;font-weight:600}
+.stat span{font-size:.78rem;color:var(--muted)}
+.tbl{max-height:460px;overflow:auto;border-radius:14px;border:1px solid rgba(255,255,255,.15)}
+table{width:100%;border-collapse:collapse;font-size:.86rem}
+th,td{text-align:left;padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.1)}
+th{position:sticky;top:0;background:rgba(20,20,20,.9);font-weight:600}
+td.tok{font-family:ui-monospace,Consolas,monospace;word-break:break-all}
+tr:last-child td{border-bottom:0}
+</style>
+</head>
+<body>
+<div class="bubble b1"></div><div class="bubble b2"></div><div class="bubble b3"></div><div class="bubble b4"></div>
+<main>
+  <header class="glass">
+    <div>
+      <h1>NVJ - Validador léxico de datos</h1>
+      <p class="sub">Correo, teléfono, código postal, fecha y CURP</p>
+    </div>
+    <div class="actions">
+      <button id="clear" disabled>Limpiar</button>
+      <label class="btn" for="file">Cargar archivo .txt</label>
+      <input type="file" id="file" accept=".txt,text/plain">
+    </div>
+  </header>
+
+  <div class="grid">
+    <section class="glass" aria-labelledby="t1">
+      <h2 id="t1">Distribución de tokens</h2>
+      <p class="fname" id="fname">Ningún archivo cargado</p>
+      <div id="chart"><div class="empty">Carga un archivo .txt para ver la gráfica.</div></div>
+    </section>
+    <section class="glass" aria-labelledby="t2">
+      <h2 id="t2">Detalle de tokens</h2>
+      <p class="fname">Cada elemento separado por espacios se evalúa por separado.</p>
+      <div id="detail"><div class="empty">Aún no hay resultados.</div></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const TIPOS=["CORREO","TELEFONO","CODIGO_POSTAL","FECHA","CURP","ERROR"];
+const COLORES={CORREO:"#7cc4ff",TELEFONO:"#9be7a8",CODIGO_POSTAL:"#ffd479",FECHA:"#c9a6ff",CURP:"#ffa6c9",ERROR:"#ff5c5c"};
+const ENT="AS|BC|BS|CC|CL|CM|CS|CH|DF|DG|GT|GR|HG|JC|MC|MN|MS|NT|NL|OC|PL|QT|QR|SP|SL|SR|TC|TS|TL|VZ|YN|ZS|NE";
+// Autómatas expresados como expresiones regulares (orden de prioridad)
+const REGLAS=[
+  ["CURP",new RegExp("^[A-Z]{4}\\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\\d|3[01])[HM]("+ENT+")[BCDFGHJKLMNPQRSTVWXYZ]{3}[A-Z0-9]\\d$")],
+  ["CORREO",/^[A-Za-z0-9._-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/],
+  ["FECHA",/^(0[1-9]|[12]\d|3[01])\/(0[1-9]|1[0-2])\/\d{4}$/],
+  ["TELEFONO",/^\d{10}$/],
+  ["CODIGO_POSTAL",/^\d{5}$/]
+];
+function clasificar(t){for(const [n,r] of REGLAS) if(r.test(t)) return n; return "ERROR";}
+function analizar(texto){
+  const out=[];
+  texto.split(/\r?\n/).forEach((l,i)=>{
+    l.split(/\s+/).filter(Boolean).forEach(t=>out.push({linea:i+1,token:t,tipo:clasificar(t)}));
+  });
+  return out;
+}
+const esc=s=>s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const $=id=>document.getElementById(id);
+
+function pie(cuentas,total){
+  const cx=100,cy=100,r=90;let ang=-Math.PI/2,paths="";
+  const activos=TIPOS.filter(t=>cuentas[t]>0);
+  if(activos.length===1){
+    paths=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${COLORES[activos[0]]}"/>`;
+  }else{
+    activos.forEach(t=>{
+      const a=cuentas[t]/total*Math.PI*2,x1=cx+r*Math.cos(ang),y1=cy+r*Math.sin(ang);
+      ang+=a;const x2=cx+r*Math.cos(ang),y2=cy+r*Math.sin(ang);
+      paths+=`<path d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${a>Math.PI?1:0} 1 ${x2},${y2} Z" fill="${COLORES[t]}" stroke="#000" stroke-width="1.5"><title>${t}: ${cuentas[t]}</title></path>`;
+    });
+  }
+  const leg=TIPOS.map(t=>{
+    const p=total?(cuentas[t]/total*100).toFixed(1):"0.0";
+    return `<li><span class="dot" style="background:${COLORES[t]}"></span>${t}<span class="n">${cuentas[t]} (${p}%)</span></li>`;
+  }).join("");
+  return `<div class="pie-wrap"><svg class="pie" viewBox="0 0 200 200" role="img" aria-label="Gráfica de pastel de tokens por tipo">${paths}</svg><ul class="legend">${leg}</ul></div>`;
+}
+
+function render(tokens,nombre){
+  $("fname").textContent="Archivo: "+nombre;
+  if(!tokens.length){
+    $("chart").innerHTML='<div class="empty">El archivo no contiene tokens.</div>';
+    $("detail").innerHTML='<div class="empty">El archivo está vacío.</div>';return;
+  }
+  const c=Object.fromEntries(TIPOS.map(t=>[t,0]));tokens.forEach(k=>c[k.tipo]++);
+  $("chart").innerHTML=pie(c,tokens.length);
+  const stats=`<div class="summary"><div class="stat"><b>${tokens.length}</b><span>Tokens totales</span></div>`+
+    TIPOS.map(t=>`<div class="stat"><b style="color:${COLORES[t]}">${c[t]}</b><span>${t}</span></div>`).join("")+"</div>";
+  const filas=tokens.map(k=>`<tr><td>${k.linea}</td><td class="tok">${esc(k.token)}</td><td>${k.tipo}</td></tr>`).join("");
+  $("detail").innerHTML=stats+`<div class="tbl"><table><thead><tr><th>Línea</th><th>Token</th><th>Tipo</th></tr></thead><tbody>${filas}</tbody></table></div>`;
+}
+
+$("file").addEventListener("change",e=>{
+  const f=e.target.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=()=>{render(analizar(String(rd.result)),f.name);$("clear").disabled=false;};
+  rd.readAsText(f,"UTF-8");
+});
+$("clear").addEventListener("click",()=>{
+  $("file").value="";$("fname").textContent="Ningún archivo cargado";
+  $("chart").innerHTML='<div class="empty">Carga un archivo .txt para ver la gráfica.</div>';
+  $("detail").innerHTML='<div class="empty">Aún no hay resultados.</div>';
+  $("clear").disabled=true;
+});
+</script>
+</body>
+</html>
