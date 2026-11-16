@@ -162,6 +162,14 @@ $("file").addEventListener("change",e=>{
   const f=e.target.files[0];if(!f)return;
   const rd=new FileReader();
   rd.onload=()=>{
+    const h=new Uint8Array(rd.result.slice(0,4));
+    if(h[0]===0&&h[1]===5&&h[2]===0x16&&h[3]===7){
+      ultimo=null;$("dl").disabled=true;$("clear").disabled=false;
+      $("fname").textContent="Archivo: "+f.name;
+      $("chart").innerHTML='<div class="empty">Este archivo no se puede analizar.</div>';
+      $("detail").innerHTML='<div class="empty">Es un archivo de metadatos de macOS (empieza con ._), no el .txt real. Carga el archivo con el mismo nombre pero sin ._ al inicio.</div>';
+      return;
+    }
     const toks=analizar(decodificar(rd.result));
     ultimo={tokens:toks,nombre:f.name};
     render(toks,f.name);$("clear").disabled=false;$("dl").disabled=!toks.length;
@@ -174,8 +182,7 @@ $("clear").addEventListener("click",()=>{
   $("detail").innerHTML='<div class="empty">Aún no hay resultados.</div>';
   $("clear").disabled=true;$("dl").disabled=true;ultimo=null;
 });
-let ultimo=null,descargas=null;
-if(window.claude)claude.use("downloads").then(d=>{descargas=d;if(!d)$("dl").hidden=true;}).catch(()=>{$("dl").hidden=true;});
+let ultimo=null;
 
 function generarReporte(tokens,nombre){
   const c=Object.fromEntries(TIPOS.map(t=>[t,0]));tokens.forEach(k=>c[k.tipo]++);
@@ -195,11 +202,15 @@ function generarReporte(tokens,nombre){
   else L.push("Sin errores léxicos.");
   return L.join("\r\n")+"\r\n";
 }
-$("dl").addEventListener("click",async()=>{
-  if(!ultimo||!descargas)return;
+$("dl").addEventListener("click",()=>{
+  if(!ultimo)return;
   const base=ultimo.nombre.replace(/\.[^.]+$/,"");
-  try{await descargas.save({filename:"reporte_"+base+".txt",data:generarReporte(ultimo.tokens,ultimo.nombre)});}
-  catch(e){if(e&&e.code!=="declined")$("fname").textContent="No se pudo descargar el reporte.";}
+  const blob=new Blob(["\uFEFF"+generarReporte(ultimo.tokens,ultimo.nombre)],{type:"text/plain;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download="reporte_"+base+".txt";
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
 });
 </script>
 </body>
