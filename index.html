@@ -70,6 +70,7 @@ tr:last-child td{border-bottom:0}
     </div>
     <div class="actions">
       <button id="clear" disabled>Limpiar</button>
+      <button id="dl" disabled>Descargar</button>
       <label class="btn" for="file">Cargar archivo .txt</label>
       <input type="file" id="file" accept=".txt,text/plain">
     </div>
@@ -102,7 +103,19 @@ const REGLAS=[
   ["CODIGO_POSTAL",/^\d{5}$/]
 ];
 function clasificar(t){for(const [n,r] of REGLAS) if(r.test(t)) return n; return "ERROR";}
+// Detecta UTF-8, UTF-8 con BOM, UTF-16 (LE/BE) y Windows-1252
+function decodificar(buf){
+  const b=new Uint8Array(buf);let enc=null;
+  if(b[0]===0xFF&&b[1]===0xFE)enc="utf-16le";
+  else if(b[0]===0xFE&&b[1]===0xFF)enc="utf-16be";
+  else if(b.length>3&&b[1]===0&&b[3]===0)enc="utf-16le";
+  else if(b.length>3&&b[0]===0&&b[2]===0)enc="utf-16be";
+  if(enc)return new TextDecoder(enc).decode(b);
+  try{return new TextDecoder("utf-8",{fatal:true}).decode(b);}
+  catch(e){return new TextDecoder("windows-1252").decode(b);}
+}
 function analizar(texto){
+  texto=texto.replace(/[\uFEFF\u200B-\u200D\u2060\u0000]/g,"");
   const out=[];
   texto.split(/\r?\n/).forEach((l,i)=>{
     l.split(/\s+/).filter(Boolean).forEach(t=>out.push({linea:i+1,token:t,tipo:clasificar(t)}));
@@ -148,14 +161,45 @@ function render(tokens,nombre){
 $("file").addEventListener("change",e=>{
   const f=e.target.files[0];if(!f)return;
   const rd=new FileReader();
-  rd.onload=()=>{render(analizar(String(rd.result)),f.name);$("clear").disabled=false;};
-  rd.readAsText(f,"UTF-8");
+  rd.onload=()=>{
+    const toks=analizar(decodificar(rd.result));
+    ultimo={tokens:toks,nombre:f.name};
+    render(toks,f.name);$("clear").disabled=false;$("dl").disabled=!toks.length;
+  };
+  rd.readAsArrayBuffer(f);
 });
 $("clear").addEventListener("click",()=>{
   $("file").value="";$("fname").textContent="Ningún archivo cargado";
   $("chart").innerHTML='<div class="empty">Carga un archivo .txt para ver la gráfica.</div>';
   $("detail").innerHTML='<div class="empty">Aún no hay resultados.</div>';
-  $("clear").disabled=true;
+  $("clear").disabled=true;$("dl").disabled=true;ultimo=null;
+});
+let ultimo=null,descargas=null;
+if(window.claude)claude.use("downloads").then(d=>{descargas=d;if(!d)$("dl").hidden=true;}).catch(()=>{$("dl").hidden=true;});
+
+function generarReporte(tokens,nombre){
+  const c=Object.fromEntries(TIPOS.map(t=>[t,0]));tokens.forEach(k=>c[k.tipo]++);
+  const L=[];
+  L.push("NVJ - VALIDADOR LÉXICO DE DATOS","REPORTE DE ANÁLISIS","=".repeat(48));
+  L.push("Archivo analizado: "+nombre,"Total de tokens: "+tokens.length,"");
+  L.push("RESUMEN POR TIPO","-".repeat(48));
+  TIPOS.forEach(t=>{
+    const p=tokens.length?(c[t]/tokens.length*100).toFixed(1):"0.0";
+    L.push(t.padEnd(16)+String(c[t]).padStart(6)+"  ("+p+"%)");
+  });
+  L.push("","DETALLE DE TOKENS","-".repeat(48),"LINEA".padEnd(8)+"TIPO".padEnd(16)+"TOKEN");
+  tokens.forEach(k=>L.push(String(k.linea).padEnd(8)+k.tipo.padEnd(16)+k.token));
+  const errs=tokens.filter(k=>k.tipo==="ERROR");
+  L.push("","ERRORES LÉXICOS ("+errs.length+")","-".repeat(48));
+  if(errs.length)errs.forEach(k=>L.push("Línea "+k.linea+": "+k.token));
+  else L.push("Sin errores léxicos.");
+  return L.join("\r\n")+"\r\n";
+}
+$("dl").addEventListener("click",async()=>{
+  if(!ultimo||!descargas)return;
+  const base=ultimo.nombre.replace(/\.[^.]+$/,"");
+  try{await descargas.save({filename:"reporte_"+base+".txt",data:generarReporte(ultimo.tokens,ultimo.nombre)});}
+  catch(e){if(e&&e.code!=="declined")$("fname").textContent="No se pudo descargar el reporte.";}
 });
 </script>
 </body>
